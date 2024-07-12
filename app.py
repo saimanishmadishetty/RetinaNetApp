@@ -93,11 +93,9 @@ if uploaded_file is not None:
     input_data = img_str
     if st.button('🔍 Detect'):
         try:
-            # print("Input data: ", input_data)
             api_response = vps_model_client.predict(model_id=model_id, input_data=img_str)
             
             # Extract class and confidence
-            print("output",api_response)
             output_base64 = postprocess(api_response, image)
             output_image_data = base64.b64decode(output_base64)
             result_image = Image.open(io.BytesIO(output_image_data))

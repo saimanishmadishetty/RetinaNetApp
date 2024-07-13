@@ -5,7 +5,6 @@ from vipas.exceptions import UnauthorizedException, NotFoundException, RateLimit
 import json
 import base64
 import io
-import time
 
 class_names = {
     1: 'person', 2: 'bicycle', 3: 'car', 4: 'motorcycle', 5: 'airplane', 6: 'bus',
@@ -103,23 +102,22 @@ if uploaded_file is not None:
         output_placeholder = st.empty()
 
         if detect_button:
-            with output_placeholder:
-                st.markdown("<div style='text-align: center;'><img src='https://i.imgur.com/llF5iyg.gif' width='50'/></div>", unsafe_allow_html=True)
-            try:
-                api_response = vps_model_client.predict(model_id=model_id, input_data=img_str)
-                output_base64 = postprocess(api_response, image)
-                output_image_data = base64.b64decode(output_base64)
-                result_image = Image.open(io.BytesIO(output_image_data))
-                
-                output_placeholder.image(result_image, caption='Detected Objects', use_column_width=True)
-            except UnauthorizedException:
-                st.error("Unauthorized exception")
-            except NotFoundException as e:
-                st.error(f"Not found exception: {str(e)}")
-            except RateLimitExceededException:
-                st.error("Rate limit exceeded exception")
-            except Exception as e:
-                st.error(f"Exception when calling model->predict: {str(e)}")
+            with st.spinner('Processing...'):
+                try:
+                    api_response = vps_model_client.predict(model_id=model_id, input_data=img_str)
+                    output_base64 = postprocess(api_response, image)
+                    output_image_data = base64.b64decode(output_base64)
+                    result_image = Image.open(io.BytesIO(output_image_data))
+                    
+                    output_placeholder.image(result_image, caption='Detected Objects', use_column_width=True)
+                except UnauthorizedException:
+                    st.error("Unauthorized exception")
+                except NotFoundException as e:
+                    st.error(f"Not found exception: {str(e)}")
+                except RateLimitExceededException:
+                    st.error("Rate limit exceeded exception")
+                except Exception as e:
+                    st.error(f"Exception when calling model->predict: {str(e)}")
 
 # Add some styling with Streamlit's Markdown
 st.markdown("""

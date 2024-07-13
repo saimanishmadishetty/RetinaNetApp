@@ -5,6 +5,8 @@ from vipas.exceptions import UnauthorizedException, NotFoundException, RateLimit
 import json
 import base64
 import io
+import time
+
 class_names = {
     1: 'person', 2: 'bicycle', 3: 'car', 4: 'motorcycle', 5: 'airplane', 6: 'bus',
     7: 'train', 8: 'truck', 9: 'boat', 10: 'traffic light', 11: 'fire hydrant',
@@ -26,7 +28,7 @@ class_names = {
 }
 
 def postprocess(predictions, original_image):
-        # Extract prediction data
+    # Extract prediction data
     boxes = predictions['detection_boxes']
     scores = predictions['detection_scores']
     classes = predictions['detection_classes']
@@ -67,8 +69,6 @@ def postprocess(predictions, original_image):
 
     return pred_image_base64
 
-
-
 # Set the title and description
 st.title("RetinaNet Object Detection")
 st.markdown("""
@@ -83,7 +83,6 @@ if uploaded_file is not None:
     vps_model_client = model.ModelClient()
     model_id = "mdl-bosb93njhjc97"
     image = Image.open(uploaded_file)
-    st.image(image, caption='Uploaded Image', use_column_width=True)
 
     # Convert the image to base64
     buffered = io.BytesIO()
@@ -91,24 +90,36 @@ if uploaded_file is not None:
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
     
     input_data = img_str
-    if st.button('🔍 Detect'):
-        try:
-            api_response = vps_model_client.predict(model_id=model_id, input_data=img_str)
-            
-            # Extract class and confidence
-            output_base64 = postprocess(api_response, image)
-            output_image_data = base64.b64decode(output_base64)
-            result_image = Image.open(io.BytesIO(output_image_data))
-            
-            st.image(result_image, caption='Detected Objects', use_column_width=True)
-        except UnauthorizedException:
-            st.error("Unauthorized exception")
-        except NotFoundException as e:
-            st.error(f"Not found exception: {str(e)}")
-        except RateLimitExceededException:
-            st.error("Rate limit exceeded exception")
-        except Exception as e:
-            st.error(f"Exception when calling model->predict: {str(e)}")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("### Input Image")
+        st.image(image, caption='Uploaded Image', use_column_width=True)
+
+    with col2:
+        st.markdown("### Output Image")
+        detect_button = st.button('🔍 Detect')
+        output_placeholder = st.empty()
+
+        if detect_button:
+            with output_placeholder:
+                st.markdown("<div style='text-align: center;'><img src='https://i.imgur.com/llF5iyg.gif' width='50'/></div>", unsafe_allow_html=True)
+            try:
+                api_response = vps_model_client.predict(model_id=model_id, input_data=img_str)
+                output_base64 = postprocess(api_response, image)
+                output_image_data = base64.b64decode(output_base64)
+                result_image = Image.open(io.BytesIO(output_image_data))
+                
+                output_placeholder.image(result_image, caption='Detected Objects', use_column_width=True)
+            except UnauthorizedException:
+                st.error("Unauthorized exception")
+            except NotFoundException as e:
+                st.error(f"Not found exception: {str(e)}")
+            except RateLimitExceededException:
+                st.error("Rate limit exceeded exception")
+            except Exception as e:
+                st.error(f"Exception when calling model->predict: {str(e)}")
 
 # Add some styling with Streamlit's Markdown
 st.markdown("""

@@ -87,9 +87,8 @@ if uploaded_file is not None:
     buffered = io.BytesIO()
     image.save(buffered, format="JPEG")
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    
     input_data = img_str
-
+    detect_button = st.button('🔍 Detect')
     col1, col2 = st.columns(2)
 
     with col1:
@@ -98,7 +97,6 @@ if uploaded_file is not None:
 
     with col2:
         st.markdown("### Output Image")
-        detect_button = st.button('🔍 Detect')
         output_placeholder = st.empty()
 
         if detect_button:
@@ -171,6 +169,15 @@ st.markdown("""
             padding: 2rem;
             border-radius: 10px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .stMarkdown > div[style*="display: flex;"] {
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+        }
+        .stMarkdown .spinner-border {
+            width: 3rem;
+            height: 3rem;
         }
     </style>
 """, unsafe_allow_html=True)

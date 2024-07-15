@@ -69,7 +69,7 @@ def postprocess(predictions, original_image):
     return pred_image_base64
 
 # Set the title and description
-st.title("RetinaNet Object Detection")
+st.title("Object Detection App")
 st.markdown("""
     Upload an image and let the RetinaNet model detect objects in it.
     This model can identify a variety of objects.

@@ -28,6 +28,7 @@ class_names = {
 
 def postprocess(predictions, original_image):
     # Extract prediction data
+
     boxes = predictions['detection_boxes']
     scores = predictions['detection_scores']
     classes = predictions['detection_classes']
@@ -130,6 +131,8 @@ st.markdown('<div class="description">Upload an image and let the RetinaNet mode
 # Upload image file
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
+result_image = None  # Initialize result_image outside the button click check
+
 if uploaded_file is not None:
     vps_model_client = model.ModelClient()
     model_id = "mdl-5sertysig3js2"
@@ -144,7 +147,7 @@ if uploaded_file is not None:
     if st.button('🔍 Detect'):
         try:
             api_response = vps_model_client.predict(model_id=model_id, input_data=img_str)
-            output_base64 = postprocess(api_response, image)
+            output_base64 = postprocess(api_response, image.copy())
             output_image_data = base64.b64decode(output_base64)
             result_image = Image.open(io.BytesIO(output_image_data))
         except UnauthorizedException:

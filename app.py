@@ -68,12 +68,64 @@ def postprocess(predictions, original_image):
 
     return pred_image_base64
 
-# Set the title and description
-st.title("Object Detection App")
+# Set the title and description with new font style
 st.markdown("""
-    Upload an image and let the RetinaNet model detect objects in it.
-    This model can identify a variety of objects.
-""")
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+        html, body, [class*="css"] {
+            font-family: 'Roboto', sans-serif;
+        }
+        .title {
+            font-size: 2.5rem;
+            color: #4CAF50;
+            text-align: center;
+        }
+        .description {
+            font-size: 1.25rem;
+            color: #555;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .uploaded-image {
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+        }
+        .prediction-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .prediction-title {
+            font-size: 24px;
+            color: #333;
+        }
+        .prediction-class {
+            font-size: 20px;
+            color: #4CAF50;
+        }
+        .confidence {
+            font-size: 20px;
+            color: #FF5733;
+        }
+        .stButton button {
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+        }
+        .stButton button:hover {
+            background-color: #45a049;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="title">Object Detection App</div>', unsafe_allow_html=True)
+st.markdown('<div class="description">Upload an image and let the RetinaNet model detect objects in it. This model can identify a variety of objects.</div>', unsafe_allow_html=True)
 
 # Upload image file
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
@@ -88,34 +140,40 @@ if uploaded_file is not None:
     image.save(buffered, format="JPEG")
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
     input_data = img_str
-    detect_button = st.button('🔍 Detect')
+
+    if st.button('🔍 Detect'):
+        try:
+            api_response = vps_model_client.predict(model_id=model_id, input_data=img_str)
+            output_base64 = postprocess(api_response, image)
+            output_image_data = base64.b64decode(output_base64)
+            result_image = Image.open(io.BytesIO(output_image_data))
+        except UnauthorizedException:
+            st.error("Unauthorized exception")
+        except NotFoundException as e:
+            st.error(f"Not found exception: {str(e)}")
+        except RateLimitExceededException:
+            st.error("Rate limit exceeded exception")
+        except Exception as e:
+            st.error(f"Exception when calling model->predict: {str(e)}")
+    else:
+        result_image = None
+
+    # Layout for image and prediction
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("### Input Image")
-        st.image(image, caption='Uploaded Image', use_column_width=True)
+        st.image(image, caption='Uploaded Image', use_column_width=True, output_format="JPEG")
 
     with col2:
-        st.markdown("### Output Image")
-        output_placeholder = st.empty()
-
-        if detect_button:
-            with st.spinner('Processing...'):
-                try:
-                    api_response = vps_model_client.predict(model_id=model_id, input_data=img_str)
-                    output_base64 = postprocess(api_response, image)
-                    output_image_data = base64.b64decode(output_base64)
-                    result_image = Image.open(io.BytesIO(output_image_data))
-                    
-                    output_placeholder.image(result_image, caption='Detected Objects', use_column_width=True)
-                except UnauthorizedException:
-                    st.error("Unauthorized exception")
-                except NotFoundException as e:
-                    st.error(f"Not found exception: {str(e)}")
-                except RateLimitExceededException:
-                    st.error("Rate limit exceeded exception")
-                except Exception as e:
-                    st.error(f"Exception when calling model->predict: {str(e)}")
+        if result_image:
+            st.image(result_image, caption='Detected Objects', use_column_width=True, output_format="JPEG")
+        else:
+            st.markdown("""
+                <div style="text-align: center; margin-top: 20px;">
+                    <p style="font-size: 24px; color: #333;"><strong>Output Image:</strong></p>
+                    <p style="font-size: 20px; color: #FF5733;">Upload an image and click "Detect" to see the results.</p>
+                </div>
+            """, unsafe_allow_html=True)
 
 # Add some styling with Streamlit's Markdown
 st.markdown("""
@@ -136,26 +194,6 @@ st.markdown("""
             margin-top: 4rem;
             padding: 2rem;
         }
-        .stTitle, .stMarkdown, .stButton, .stImage {
-            text-align: center;
-        }
-        .stButton > button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 24px;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border: none;
-            border-radius: 8px;
-        }
-        .stButton > button:hover {
-            background-color: #45a049;
-        }
-        .stImage > img {
-            border: 2px solid #4CAF50;
-            border-radius: 8px;
-        }
         pre {
             background: #e0f7fa;
             padding: 15px;
@@ -169,15 +207,6 @@ st.markdown("""
             padding: 2rem;
             border-radius: 10px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        .stMarkdown > div[style*="display: flex;"] {
-            justify-content: center;
-            align-items: center;
-            height: 100%;
-        }
-        .stMarkdown .spinner-border {
-            width: 3rem;
-            height: 3rem;
         }
     </style>
 """, unsafe_allow_html=True)

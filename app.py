@@ -135,7 +135,7 @@ result_image = None  # Initialize result_image outside the button click check
 
 if uploaded_file is not None:
     vps_model_client = model.ModelClient()
-    model_id = "mdl-5sertysig3js2"
+    model_id = "mdl-bosb93njhjc97"
     image = Image.open(uploaded_file)
 
     # Convert the image to base64

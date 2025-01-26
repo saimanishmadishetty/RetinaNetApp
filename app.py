@@ -1,215 +1,118 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
 from vipas import model
-from vipas.exceptions import UnauthorizedException, NotFoundException, RateLimitExceededException
-import json
-import base64
-import io
+from sentence_transformers import SentenceTransformer
+import faiss
+import pdfplumber
+from docx import Document
+import pandas as pd
+import numpy as np
 
-class_names = {
-    1: 'person', 2: 'bicycle', 3: 'car', 4: 'motorcycle', 5: 'airplane', 6: 'bus',
-    7: 'train', 8: 'truck', 9: 'boat', 10: 'traffic light', 11: 'fire hydrant',
-    13: 'stop sign', 14: 'parking meter', 15: 'bench', 16: 'bird', 17: 'cat',
-    18: 'dog', 19: 'horse', 20: 'sheep', 21: 'cow', 22: 'elephant', 23: 'bear',
-    24: 'zebra', 25: 'giraffe', 27: 'backpack', 28: 'umbrella', 31: 'handbag',
-    32: 'tie', 33: 'suitcase', 34: 'frisbee', 35: 'skis', 36: 'snowboard',
-    37: 'sports ball', 38: 'kite', 39: 'baseball bat', 40: 'baseball glove',
-    41: 'skateboard', 42: 'surfboard', 43: 'tennis racket', 44: 'bottle',
-    46: 'wine glass', 47: 'cup', 48: 'fork', 49: 'knife', 50: 'spoon',
-    51: 'bowl', 52: 'banana', 53: 'apple', 54: 'sandwich', 55: 'orange',
-    56: 'broccoli', 57: 'carrot', 58: 'hot dog', 59: 'pizza', 60: 'donut',
-    61: 'cake', 62: 'chair', 63: 'couch', 64: 'potted plant', 65: 'bed',
-    67: 'dining table', 70: 'toilet', 72: 'tv', 73: 'laptop', 74: 'mouse',
-    75: 'remote', 76: 'keyboard', 77: 'cell phone', 78: 'microwave',
-    79: 'oven', 80: 'toaster', 81: 'sink', 82: 'refrigerator', 84: 'book',
-    85: 'clock', 86: 'vase', 87: 'scissors', 88: 'teddy bear', 89: 'hair drier',
-    90: 'toothbrush'
-}
+class RAGProcessor:
+    def __init__(self, model_id):
+        self.client = model.ModelClient()
+        self.model_id = model_id
+        self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2",cache_folder="/app/cache")
+        self.faiss_index = None
+        self.chunks = []
+        self.embeddings = None
+        self.last_file_name = None
 
-def postprocess(predictions, original_image):
-    # Extract prediction data
-
-    boxes = predictions['detection_boxes']
-    scores = predictions['detection_scores']
-    classes = predictions['detection_classes']
-    num_detections = int(predictions['num_detections'])
-
-    # Draw bounding boxes and class names on the original image
-    draw = ImageDraw.Draw(original_image)
-    width, height = original_image.size
-
-    try:
-        # Use a truetype font
-        font = ImageFont.truetype("arial.ttf", 20)
-    except IOError:
-        # If the truetype font is not available, use the default bitmap font
-        font = ImageFont.load_default()
-
-    for i in range(num_detections):
-        ymin, xmin, ymax, xmax = boxes[i]
-        left, right, top, bottom = xmin * width, xmax * width, ymin * height, ymax * height
-        draw.rectangle([left, top, right, bottom], outline="red", width=2)
-        class_id = int(classes[i])
-        class_name = class_names.get(class_id, 'Unknown')
-        text = f"{class_name} {scores[i]:.2f}"
-        
-        # Calculate text size
-        text_size = draw.textbbox((0, 0), text, font=font)
-        text_width = text_size[2] - text_size[0]
-        text_height = text_size[3] - text_size[1]
-        
-        # Draw text background
-        draw.rectangle([left, top, left + text_width, top + text_height], fill="red")
-        draw.text((left, top), text, fill="white", font=font)
-
-    # Convert the image with bounding boxes and class names back to base64
-    buffered = io.BytesIO()
-    original_image.save(buffered, format="JPEG")
-    pred_image_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-    return pred_image_base64
-
-# Set the title and description with new font style
-st.markdown("""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
-        html, body, [class*="css"] {
-            font-family: 'Roboto', sans-serif;
-        }
-        .title {
-            font-size: 2.5rem;
-            color: #4CAF50;
-            text-align: center;
-        }
-        .description {
-            font-size: 1.25rem;
-            color: #555;
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        .uploaded-image {
-            border: 2px solid #4CAF50;
-            border-radius: 8px;
-        }
-        .prediction-container {
-            text-align: center;
-            margin-top: 20px;
-        }
-        .prediction-title {
-            font-size: 24px;
-            color: #333;
-        }
-        .prediction-class {
-            font-size: 20px;
-            color: #4CAF50;
-        }
-        .confidence {
-            font-size: 20px;
-            color: #FF5733;
-        }
-        .stButton button {
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 24px;
-            font-size: 16px;
-            cursor: pointer;
-            border: none;
-            border-radius: 8px;
-        }
-        .stButton button:hover {
-            background-color: #45a049;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="title">Object Detection App</div>', unsafe_allow_html=True)
-st.markdown('<div class="description">Upload an image and let the RetinaNet model detect objects in it. This model can identify a variety of objects.</div>', unsafe_allow_html=True)
-
-# Upload image file
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-
-result_image = None  # Initialize result_image outside the button click check
-
-if uploaded_file is not None:
-    vps_model_client = model.ModelClient()
-    model_id = "mdl-0001kphf7v43s"
-    image = Image.open(uploaded_file)
-
-    # Convert the image to base64
-    buffered = io.BytesIO()
-    image.save(buffered, format="JPEG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    input_data = img_str
-
-    if st.button('🔍 Detect'):
+    def preprocess_document(self, file):
         try:
-            api_response = vps_model_client.predict(model_id=model_id, input_data=img_str)
-            output_base64 = postprocess(api_response, image.copy())
-            output_image_data = base64.b64decode(output_base64)
-            result_image = Image.open(io.BytesIO(output_image_data))
-        except UnauthorizedException:
-            st.error("Unauthorized exception")
-        except NotFoundException as e:
-            st.error(f"Not found exception: {str(e)}")
-        except RateLimitExceededException:
-            st.error("Rate limit exceeded exception")
+            if file.type == "application/pdf":
+                with pdfplumber.open(file) as pdf:
+                    text = "".join([page.extract_text() or "" for page in pdf.pages])
+            elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                doc = Document(file)
+                text = " ".join([para.text for para in doc.paragraphs])
+            elif file.type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                data = pd.read_excel(file)
+                text = data.to_string(index=False)
+            else:
+                st.error("Unsupported file type. Please upload a PDF, DOCX, or Excel file.")
+                return ""
+            return text
         except Exception as e:
-            st.error(f"Exception when calling model->predict: {str(e)}")
-    else:
-        result_image = None
+            st.error(f"Error processing file: {e}")
+            return ""
 
-    # Layout for image and prediction
-    col1, col2 = st.columns(2)
+    def store_embeddings(self, text, batch_size=32):
+        self.chunks = [text[i:i + 500] for i in range(0, len(text), 500)]
+        self.chunks = [chunk for chunk in self.chunks if chunk.strip()]
 
-    with col1:
-        st.image(image, caption='Uploaded Image', use_column_width=True, output_format="JPEG")
+        if not self.chunks:
+            st.error("No valid text found in the document.")
+            return None
 
-    with col2:
-        if result_image:
-            st.image(result_image, caption='Detected Objects', use_column_width=True, output_format="JPEG")
-        else:
-            st.markdown("""
-                <div style="text-align: center; margin-top: 20px;">
-                    <p style="font-size: 24px; color: #333;"><strong>Output Image:</strong></p>
-                    <p style="font-size: 20px; color: #FF5733;">Upload an image and click "Detect" to see the results.</p>
-                </div>
-            """, unsafe_allow_html=True)
+        self.faiss_index = faiss.IndexFlatL2(384)  # Reinitialize FAISS index
+        self.embeddings = []
 
-# Add some styling with Streamlit's Markdown
-st.markdown("""
-    <style>
-        .stApp {
-            background-color: #f5f5f5;
-            padding: 0;
-        }
-        .stApp > header {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            z-index: 1;
-            background: #ffffff;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        .stApp > main {
-            margin-top: 4rem;
-            padding: 2rem;
-        }
-        pre {
-            background: #e0f7fa;
-            padding: 15px;
-            border-radius: 8px;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            border: 1px solid #4CAF50;
-        }
-        .css-1cpxqw2.e1ewe7hr3 {
-            background-color: #ffffff;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-    </style>
-""", unsafe_allow_html=True)
+        for i in range(0, len(self.chunks), batch_size):
+            batch = self.chunks[i:i + batch_size]
+            batch_embeddings = self.embedding_model.encode(batch)
+            self.embeddings.extend(batch_embeddings)
+
+        self.embeddings = np.array(self.embeddings)
+        self.faiss_index.add(self.embeddings)
+        return self.chunks
+
+    def retrieve_context(self, query):
+        if self.faiss_index is None or not self.chunks:
+            st.error("No document is indexed. Please upload a file first.")
+            return ""
+
+        query_embedding = self.embedding_model.encode([query])
+        distances, indices = self.faiss_index.search(query_embedding, k=5)  # Retrieve top 5 chunks
+
+        retrieved_chunks = [self.chunks[i] for i in indices[0]]
+        return " ".join(retrieved_chunks)
+
+    def query_llm(self, query, context):
+        prompt = (
+            "You are an expert. Answer the question using the provided context:\n\n"
+            f"Context: {context}\n\n"
+            f"Question: {query}\n\n"
+            "Answer:"
+        )
+        try:
+            response = self.client.predict(model_id=self.model_id, input_data=prompt)
+            return response.get("choices", [{}])[0].get("text", "No response text available.")
+        except Exception as e:
+            st.error(f"Error querying the LLM: {e}")
+            return ""
+
+# Use Streamlit session state to persist the processor
+if "rag_processor" not in st.session_state:
+    st.session_state.rag_processor = RAGProcessor(model_id="mdl-hy3grx9aoskqu")
+
+rag_processor = st.session_state.rag_processor
+
+# Streamlit app
+st.title("RAG-based Q&A with  Llama")
+st.write("Upload a document and ask questions using the LLM.")
+
+# File upload
+uploaded_file = st.file_uploader("Upload a file (PDF, DOC, or Excel):", type=["pdf", "docx", "xlsx"])
+if uploaded_file:
+    file_name = uploaded_file.name
+    if file_name != rag_processor.last_file_name:
+        st.write("Processing the file...")
+        text = rag_processor.preprocess_document(uploaded_file)
+
+        if text:
+            st.write("Generating embeddings and indexing...")
+            chunks = rag_processor.store_embeddings(text)
+
+            if chunks:
+                rag_processor.last_file_name = file_name
+                st.success("Document processed and indexed successfully!")
+    query = st.text_input("Enter your query:")
+    if query:
+        context = rag_processor.retrieve_context(query)
+        st.write("Retrieved Context:")
+        st.write(context)
+
+        st.write("Generating response from LLM...")
+        response = rag_processor.query_llm(query, context)
+        st.write("### Response")
+        st.write(response)

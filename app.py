@@ -1,5 +1,5 @@
 import streamlit as st
-from vipas import model
+from vipas import model,config
 from sentence_transformers import SentenceTransformer
 import faiss
 import pdfplumber
@@ -112,7 +112,7 @@ if uploaded_file:
         st.write("Retrieved Context:")
         st.write(context)
 
-        st.write("Generating response from LLM...")
+        st.write(f"Generating response from LLM...from {config.Config().host}")
         response = rag_processor.query_llm(query, context)
         st.write("### Response")
         st.write(response)

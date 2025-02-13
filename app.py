@@ -10,7 +10,7 @@ import requests
 model_client = model.ModelClient()
 
 # Streamlit app UI
-st.title("Image Prediction with Vipas.AI")
+st.title("Bone Fracture Detection using X-Ray images")
 
 # Example image links
 example_images = {

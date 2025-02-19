@@ -1,83 +1,78 @@
 import streamlit as st
 import base64
-import io
+import json
+import os
 import requests
 from vipas import model, exceptions
-from PIL import Image
 
-# Initialize model client
 model_client = model.ModelClient()
-
-# Streamlit app UI
-st.title("Bone Fracture Detection using X-Ray images")
 
 # Example image links
 example_images = {
-    "Example 1": "https://utils.vipas.ai/vipas-images/curated_images/test1.jpg",
-    "Example 2": "https://utils.vipas.ai/vipas-images/curated_images/test2.jpg",
-    "Example 3": "https://utils.vipas.ai/vipas-images/curated_images/test3.jpg",
-    "Example 4": "https://utils.vipas.ai/vipas-images/curated_images/test4.jpg",
-    "Upload Your Own": "Upload"
+    "Example 1": "https://utils.vipas.ai/vipas-images/curated_images_for_skin_cancer/example1.jpg",
+    "Example 2": "https://utils.vipas.ai/vipas-images/curated_images_for_skin_cancer/example2.jpg",
+    "Example 3": "https://utils.vipas.ai/vipas-images/curated_images_for_skin_cancer/example3.jpg",
+    "Example 4": "https://utils.vipas.ai/vipas-images/curated_images_for_skin_cancer/example4.jpg"
 }
 
-# Select image source
-selected_example = st.selectbox("Choose an example image", list(example_images.keys()))
+# Streamlit UI
+st.title("Skin Cancer Classification")
+st.write("Choose an option to get a prediction.")
 
-# Image placeholders
-image = None
-output_image = None
+# Dropdown for selecting input type
+option = st.selectbox("Select Image Source:", ["Upload an Image", "Use Example Image"])
+selected_image = None
 
-# Fetch example image or uploaded image
-if selected_example in example_images and selected_example != "Upload Your Own":
-    image_url = example_images[selected_example]
-    response = requests.get(image_url)
-    image = Image.open(io.BytesIO(response.content))
-elif selected_example == "Upload Your Own":
-    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+if option == "Use Example Image":
+    image_choice = st.selectbox("Choose an Example Image:", list(example_images.keys()))
+    selected_image = example_images[image_choice]
+elif option == "Upload an Image":
+    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
     if uploaded_file:
-        image = Image.open(uploaded_file)
+        selected_image = uploaded_file
 
-# Display input image immediately after selection/upload
-if image:
-    col1, col2 = st.columns(2)
-
+if selected_image:
+    col1, col2 = st.columns([1, 1])
+    
     with col1:
-        st.image(image, caption="Input Image", use_column_width=True)
-
-    # Placeholder for the output image (initially empty)
-    output_container = col2.empty()
-
-    # Convert image to base64
-    buffered = io.BytesIO()
-    image.save(buffered, format="PNG")
-    base64_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-    # Prepare input JSON
-    input_body = {
-        "inputs": [
-            {
-                "name": "image",
-                "datatype": "BYTES",
-                "shape": [1],
-                "data": [base64_image]
-            }
-        ]
-    }
-
-    # Predict button (placed below the images to maintain layout)
-    if st.button("Predict"):
-        try:
-            response = model_client.predict(model_id="mdl-3rfp3u0durn9v", input_data=input_body)
-
-            if response and response.get("outputs", None):
-                output_base64 = response.get("outputs")[0].get("data")[0]
-                output_image = Image.open(io.BytesIO(base64.b64decode(output_base64)))
-
-                # Update output container with the predicted output image
-                output_container.image(output_image, caption="Output Image", use_column_width=True)
-            else:
-                st.error("No output received from model.")
-        except exceptions.ClientException as e:
-            st.error(f"Client Exception: {e}")
-        except Exception as e:
-            st.error(f"Unexpected Error: {e}")
+        if isinstance(selected_image, str):
+            st.image(selected_image, caption="Selected Image", use_column_width=True)
+        else:
+            st.image(selected_image, caption="Uploaded Image", use_column_width=True)
+    
+    with col2:
+        predict_button = st.button("Predict")
+        if predict_button:
+            try:
+                # Read and encode the image in base64
+                if isinstance(selected_image, str):
+                    response = requests.get(selected_image)
+                    base_64_string = base64.b64encode(response.content).decode("utf-8")
+                else:
+                    base_64_string = base64.b64encode(selected_image.read()).decode("utf-8")
+                
+                # Create input JSON body
+                input_body = {
+                    "inputs": [
+                        {
+                            "name": "image_base64",
+                            "datatype": "BYTES",
+                            "shape": [1],
+                            "data": [base_64_string]
+                        }
+                    ]
+                }
+                
+                # Send prediction request
+                response = model_client.predict(model_id="mdl-txpby5w7p3jzc", input_data=input_body)
+                
+                # Display prediction output
+                if response and response.get("outputs"):
+                    st.success(f'Prediction Result:{response.get("outputs")[0].get("data")[0]}')
+                else:
+                    st.error("No response received from the model.")
+                
+            except exceptions.ClientException as e:
+                st.error(f"Client Exception: {e}")
+            except Exception as e:
+                st.error(f"Unexpected Error: {e}")

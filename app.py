@@ -68,7 +68,7 @@ if selected_image:
                 
                 # Display prediction output
                 if response and response.get("outputs"):
-                    st.success(f'Prediction Result:{response.get("outputs")[0].get("data")[0]}')
+                    st.success(f'Prediction Result:{response.get("outputs")[1].get("data")[0]}')
                 else:
                     st.error("No response received from the model.")
                 

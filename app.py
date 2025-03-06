@@ -8,14 +8,14 @@ model_client = model.ModelClient()
 
 # Example image links
 example_images = {
-    "Example 1": "https://utils.vipas.ai/vipas-images/curated_images_for_skin_cancer/example1.jpg",
-    "Example 2": "https://utils.vipas.ai/vipas-images/curated_images_for_skin_cancer/example2.jpg",
-    "Example 3": "https://utils.vipas.ai/vipas-images/curated_images_for_skin_cancer/example3.jpg",
-    "Example 4": "https://utils.vipas.ai/vipas-images/curated_images_for_skin_cancer/example4.jpg"
+    "Example 1": "https://utils.vipas.ai/vipas-images/diabetic_retinopathy_test_images/0.jpeg",
+    "Example 2": "https://utils.vipas.ai/vipas-images/diabetic_retinopathy_test_images/1.jpeg",
+    "Example 3": "https://utils.vipas.ai/vipas-images/diabetic_retinopathy_test_images/2.jpeg",
+    "Example 4": "https://utils.vipas.ai/vipas-images/diabetic_retinopathy_test_images/3.jpeg",
 }
 
 # Streamlit UI
-st.title("Skin Cancer Classification")
+st.title("Diabetic Retinopathy Detection")
 st.write("Choose an option to get a prediction.")
 
 # Dropdown for selecting input type
@@ -67,14 +67,21 @@ if selected_image:
             }
 
             # Send prediction request
-            response = model_client.predict(model_id="mdl-txpby5w7p3jzc", input_data=input_body)
+            response = model_client.predict(model_id="mdl-u28qo4e90ri0a", input_data=input_body)
+            print(response)
 
             # Display prediction output in col2
             if response and response.get("outputs"):
-                predicted_class = response.get("outputs")[0].get("data")[0]
-                predicted_description = response.get("outputs")[1].get("data")[0]
+                predicted_class_name = response.get("outputs")[2].get("data")[0]  # Class name
+                confidence_scores = response.get("outputs")[1].get("data")  # Confidence scores (array)
+                class_description = response.get("outputs")[3].get("data")[0]  # Description
 
-                prediction_placeholder.markdown(f"**{predicted_class}**  \n{predicted_description}")
+                # Display the class name, confidence score (for the predicted class), and description
+                predicted_score = confidence_scores[0]  # Confidence of the predicted class (first element)
+                answer_string = f"Predicted Class: {predicted_class_name} \n\n Confidence Score: {predicted_score:.2f} \n\n Description: {class_description}"
+
+                prediction_placeholder.write(answer_string)
+
             else:
                 prediction_placeholder.error("No response received from the model.")
 

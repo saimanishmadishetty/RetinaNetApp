@@ -1,91 +1,87 @@
 import streamlit as st
 import base64
+import io
 import json
 import requests
 from vipas import model, exceptions
+from PIL import Image
 
+# Initialize model client
 model_client = model.ModelClient()
+
+# Streamlit app UI
+st.title("Weed detection in crops")
 
 # Example image links
 example_images = {
-    "Example 1": "https://utils.vipas.ai/vipas-images/diabetic_retinopathy_test_images/0.jpeg",
-    "Example 2": "https://utils.vipas.ai/vipas-images/diabetic_retinopathy_test_images/1.jpeg",
-    "Example 3": "https://utils.vipas.ai/vipas-images/diabetic_retinopathy_test_images/2.jpeg",
-    "Example 4": "https://utils.vipas.ai/vipas-images/diabetic_retinopathy_test_images/3.jpeg",
+    "Example 1": "https://utils.vipas.ai/vipas-images/weed_detection/test1.jpeg",
+    "Example 2": "https://utils.vipas.ai/vipas-images/weed_detection/test2.jpeg",
+    "Example 3": "https://utils.vipas.ai/vipas-images/weed_detection/test3.jpeg",
+    "Example 4": "https://utils.vipas.ai/vipas-images/weed_detection/test4.jpeg",
+    "Upload Your Own": "Upload"
 }
 
-# Streamlit UI
-st.title("Diabetic Retinopathy Detection")
-st.write("Choose an option to get a prediction.")
+# Select image source
+selected_example = st.selectbox("Choose an example image", list(example_images.keys()))
 
-# Dropdown for selecting input type
-option = st.selectbox("Select Image Source:", ["Upload an Image", "Use Example Image"])
-selected_image = None
+# Image placeholders
+image = None
+output_image = None
 
-if option == "Use Example Image":
-    image_choice = st.selectbox("Choose an Example Image:", list(example_images.keys()))
-    selected_image = example_images[image_choice]
-elif option == "Upload an Image":
-    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+# Fetch example image or uploaded image
+if selected_example in example_images and selected_example != "Upload Your Own":
+    image_url = example_images[selected_example]
+    response = requests.get(image_url)
+    image = Image.open(io.BytesIO(response.content))
+elif selected_example == "Upload Your Own":
+    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
     if uploaded_file:
-        selected_image = uploaded_file
+        image = Image.open(uploaded_file)
 
-if selected_image:
-    col1, col2 = st.columns([0.5, 0.5])  # Two equal-width columns
+# Display input image immediately after selection/upload
+if image:
+    col1, col2 = st.columns(2)
 
     with col1:
-        st.image(selected_image, caption="Selected Image", use_column_width=True)
+        st.image(image, caption="Input Image", use_column_width=True)
 
-    with col2:
-        st.markdown("### Prediction Result:")
-        prediction_placeholder = st.empty()  # Placeholder for dynamic updates
+    # Placeholder for the output image (initially empty)
+    output_container = col2.empty()
 
-    # Predict button centered below both columns
-    col1, col2, col3 = st.columns([0.3, 0.4, 0.3])
-    with col2:
-        predict_button = st.button("Predict", use_container_width=True)
+    # Convert image to base64
+    buffered = io.BytesIO()
+    image.save(buffered, format="PNG")
+    base64_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-    if predict_button:
-        try:
-            # Read and encode the image in base64
-            if isinstance(selected_image, str):
-                response = requests.get(selected_image)
-                base_64_string = base64.b64encode(response.content).decode("utf-8")
-            else:
-                base_64_string = base64.b64encode(selected_image.read()).decode("utf-8")
-
-            # Create input JSON body
-            input_body = {
-                "inputs": [
-                    {
-                        "name": "image_base64",
-                        "datatype": "BYTES",
-                        "shape": [1],
-                        "data": [base_64_string]
-                    }
-                ]
+    # Prepare input JSON
+    input_body = {
+        "inputs": [
+            {
+                "name": "image",
+                "datatype": "BYTES",
+                "shape": [1],
+                "data": [base64_image]
             }
+        ]
+    }
 
-            # Send prediction request
-            response = model_client.predict(model_id="mdl-u28qo4e90ri0a", input_data=input_body)
-            print(response)
+    # Predict button (placed below the images to maintain layout)
+    if st.button("Predict"):
+        try:
+            response = model_client.predict(model_id="mdl-ywivo8k09baqt", input_data=input_body)
 
-            # Display prediction output in col2
-            if response and response.get("outputs"):
-                predicted_class_name = response.get("outputs")[2].get("data")[0]  # Class name
-                confidence_scores = response.get("outputs")[1].get("data")  # Confidence scores (array)
-                class_description = response.get("outputs")[3].get("data")[0]  # Description
+            if response and response.get("outputs", None):
+                output_data = response["outputs"][0].get("data", [])[0]  # Extract JSON string
+                parsed_data = json.loads(output_data)  # Parse JSON string
+                output_base64 = parsed_data[0]["annotated_image_base64"]  # Extract base64 string
 
-                # Display the class name, confidence score (for the predicted class), and description
-                predicted_score = confidence_scores[0]  # Confidence of the predicted class (first element)
-                answer_string = f"Predicted Class: {predicted_class_name} \n\n Confidence Score: {predicted_score:.2f} \n\n Description: {class_description}"
+                output_image = Image.open(io.BytesIO(base64.b64decode(output_base64)))
 
-                prediction_placeholder.write(answer_string)
-
+                # Update output container with the predicted output image
+                output_container.image(output_image, caption="Output Image", use_column_width=True)
             else:
-                prediction_placeholder.error("No response received from the model.")
-
+                st.error("No output received from model.")
         except exceptions.ClientException as e:
-            prediction_placeholder.error(f"Client Exception: {e}")
+            st.error(f"Client Exception: {e}")
         except Exception as e:
-            prediction_placeholder.error(f"Unexpected Error: {e}")
+            st.error(f"Unexpected Error: {e}")
